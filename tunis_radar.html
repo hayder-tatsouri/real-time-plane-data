@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tunis Airspace Radar</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#0a0f1a; --surface:#0f1826; --border:#1a2a3a;
+  --accent:#00d4ff; --green:#00ff9d; --warn:#ff6b35;
+  --text:#c8d8e8; --muted:#4a6070;
+  --mono:'Share Tech Mono',monospace; --sans:'Inter',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);height:100vh;display:flex;flex-direction:column;overflow:hidden}
+
+/* header */
+header{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0}
+.logo{font-family:var(--mono);font-size:1rem;letter-spacing:.1em;color:var(--accent);display:flex;align-items:center;gap:10px}
+.hdr-right{display:flex;align-items:center;gap:20px;font-family:var(--mono);font-size:.7rem;color:var(--muted)}
+.pulse{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green);animation:blink 1.4s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.15}}
+#liveTag{font-size:.7rem;padding:2px 8px;border-radius:2px;font-family:var(--mono)}
+.tag-live{background:rgba(0,255,157,.1);color:var(--green);border:1px solid rgba(0,255,157,.3)}
+.tag-demo{background:rgba(255,107,53,.1);color:var(--warn);border:1px solid rgba(255,107,53,.3)}
+.tag-load{background:rgba(0,212,255,.1);color:var(--accent);border:1px solid rgba(0,212,255,.3)}
+
+/* banners */
+#banner{display:none;padding:6px 20px;font-size:.72rem;font-family:var(--mono);text-align:center;flex-shrink:0}
+.banner-err{background:rgba(255,107,53,.1);border-bottom:1px solid var(--warn);color:var(--warn)}
+.banner-info{background:rgba(0,212,255,.07);border-bottom:1px solid rgba(0,212,255,.2);color:var(--accent)}
+
+/* stats */
+.stats{display:flex;gap:1px;background:var(--border);border-bottom:1px solid var(--border);flex-shrink:0}
+.stat{flex:1;padding:9px 16px;background:var(--surface)}
+.stat-val{font-family:var(--mono);font-size:1.4rem;color:var(--accent);line-height:1}
+.stat-label{font-size:.62rem;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-top:2px}
+
+/* main */
+main{flex:1;display:grid;grid-template-columns:1fr 360px;overflow:hidden;min-height:0}
+
+/* radar */
+.radar-wrap{position:relative;background:var(--bg);overflow:hidden;border-right:1px solid var(--border)}
+canvas{display:block;width:100%;height:100%}
+#refreshBtn{position:absolute;bottom:12px;left:12px;background:var(--surface);border:1px solid var(--border);color:var(--accent);font-family:var(--mono);font-size:.7rem;padding:5px 12px;cursor:pointer;letter-spacing:.06em;transition:.15s}
+#refreshBtn:hover{background:var(--border);border-color:var(--accent)}
+#cdText{position:absolute;bottom:12px;right:12px;font-family:var(--mono);font-size:.68rem;color:var(--muted)}
+
+/* sidebar */
+.sidebar{display:flex;flex-direction:column;overflow:hidden;background:var(--surface)}
+.sb-hdr{padding:8px 14px;font-size:.63rem;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);border-bottom:1px solid var(--border);font-family:var(--mono);display:flex;justify-content:space-between;flex-shrink:0}
+.table-wrap{overflow-y:auto;flex:1;min-height:0}
+
+table{width:100%;border-collapse:collapse}
+thead th{position:sticky;top:0;background:var(--surface);padding:7px 8px;text-align:left;font-size:.6rem;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);border-bottom:1px solid var(--border);font-family:var(--mono);font-weight:400;white-space:nowrap}
+tbody tr{border-bottom:1px solid rgba(26,42,58,.8);cursor:pointer;transition:background .1s}
+tbody tr:hover,tbody tr.sel{background:rgba(0,212,255,.08)}
+tbody td{padding:7px 8px;font-family:var(--mono);font-size:.72rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tc{color:var(--accent);font-weight:600}
+.ta{color:var(--green)}
+.ts{color:var(--warn)}
+
+/* detail */
+#detail{flex-shrink:0;border-top:1px solid var(--border);padding:12px 14px;font-family:var(--mono);font-size:.7rem;line-height:1.9;background:rgba(0,212,255,.02);display:none}
+.d-title{color:var(--accent);font-size:.88rem;font-weight:600;letter-spacing:.06em;margin-bottom:4px}
+.d-row{display:flex;justify-content:space-between;border-bottom:1px solid rgba(26,42,58,.5);padding:1px 0}
+.d-key{color:var(--muted)}
+.d-val{color:var(--text)}
+.d-val.hi{color:var(--green)}
+
+/* tooltip */
+#tip{position:fixed;background:var(--surface);border:1px solid var(--accent);padding:7px 11px;font-family:var(--mono);font-size:.69rem;color:var(--text);pointer-events:none;display:none;line-height:1.85;z-index:999;max-width:220px}
+
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+      <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="5"/>
+      <line x1="12" y1="2" x2="12" y2="7"/><line x1="12" y1="17" x2="12" y2="22"/>
+      <line x1="2" y1="12" x2="7" y2="12"/><line x1="17" y1="12" x2="22" y2="12"/>
+    </svg>
+    TUNIS AIRSPACE RADAR
+  </div>
+  <div class="hdr-right">
+    <span id="liveTag" class="tag-load">CONNECTING</span>
+    <div class="pulse"></div>
+    <span id="ts">--:--:--</span>
+    <span>30–38°N · 7–13°E</span>
+  </div>
+</header>
+
+<div id="banner"></div>
+
+<div class="stats">
+  <div class="stat"><div class="stat-val" id="sTotal">—</div><div class="stat-label">Aircraft</div></div>
+  <div class="stat"><div class="stat-val" id="sAlt">—</div><div class="stat-label">Avg Alt (m)</div></div>
+  <div class="stat"><div class="stat-val" id="sSpd">—</div><div class="stat-label">Avg Speed (m/s)</div></div>
+  <div class="stat"><div class="stat-val" id="sCtr">—</div><div class="stat-label">Countries</div></div>
+  <div class="stat"><div class="stat-val" id="sGnd">—</div><div class="stat-label">On Ground</div></div>
+</div>
+
+<main>
+  <div class="radar-wrap">
+    <canvas id="radar"></canvas>
+    <button id="refreshBtn">↻ REFRESH</button>
+    <div id="cdText"></div>
+  </div>
+  <div class="sidebar">
+    <div class="sb-hdr"><span>Live flights</span><span id="planeCount">—</span></div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Callsign</th><th>ICAO</th><th>Country</th>
+            <th>Alt (m)</th><th>Spd (m/s)</th><th>Hdg</th><th>Vrate</th><th>Gnd</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <div id="detail">
+      <div class="d-title" id="d-cs">—</div>
+      <div class="d-row"><span class="d-key">ICAO24</span>    <span class="d-val" id="d-icao">—</span></div>
+      <div class="d-row"><span class="d-key">Country</span>   <span class="d-val" id="d-country">—</span></div>
+      <div class="d-row"><span class="d-key">Position</span>  <span class="d-val" id="d-pos">—</span></div>
+      <div class="d-row"><span class="d-key">Altitude</span>  <span class="d-val hi" id="d-alt">—</span></div>
+      <div class="d-row"><span class="d-key">Speed</span>     <span class="d-val hi" id="d-spd">—</span></div>
+      <div class="d-row"><span class="d-key">Heading</span>   <span class="d-val" id="d-hdg">—</span></div>
+      <div class="d-row"><span class="d-key">Vert rate</span> <span class="d-val" id="d-vr">—</span></div>
+      <div class="d-row"><span class="d-key">Squawk</span>    <span class="d-val" id="d-sq">—</span></div>
+      <div class="d-row"><span class="d-key">On ground</span> <span class="d-val" id="d-gnd">—</span></div>
+    </div>
+  </div>
+</main>
+
+<div id="tip"></div>
+
+<script>
+const LAMIN=30,LAMAX=38,LOMIN=7,LOMAX=13;
+const LOCAL = "http://localhost:5050/flights";
+
+let planes=[], selIcao=null, cdVal=30, cdTimer=null;
+
+// ── Canvas ────────────────────────────────────────────────
+const cv=document.getElementById('radar'), cx=cv.getContext('2d');
+
+function resize(){
+  const p=cv.parentElement;
+  cv.width=p.clientWidth*devicePixelRatio;
+  cv.height=p.clientHeight*devicePixelRatio;
+  cv.style.width=p.clientWidth+'px';
+  cv.style.height=p.clientHeight+'px';
+  draw();
+}
+window.addEventListener('resize',resize);
+setTimeout(resize,30);
+
+function toXY(lat,lon){
+  return [
+    ((lon-LOMIN)/(LOMAX-LOMIN))*cv.width,
+    ((LAMAX-lat)/(LAMAX-LAMIN))*cv.height
+  ];
+}
+
+function draw(){
+  const W=cv.width,H=cv.height,dpr=devicePixelRatio;
+  cx.clearRect(0,0,W,H);
+
+  // grid
+  cx.strokeStyle='rgba(0,212,255,0.05)';cx.lineWidth=1;
+  for(let i=1;i<8;i++){const x=i/8*W;cx.beginPath();cx.moveTo(x,0);cx.lineTo(x,H);cx.stroke()}
+  for(let i=1;i<6;i++){const y=i/6*H;cx.beginPath();cx.moveTo(0,y);cx.lineTo(W,y);cx.stroke()}
+
+  // lat/lon labels
+  cx.fillStyle='rgba(74,96,112,0.5)';cx.font=`${7.5*dpr}px 'Share Tech Mono'`;
+  for(let lon=7;lon<=13;lon+=1){
+    const[x]=toXY(LAMIN,lon);
+    cx.fillText(lon.toFixed(1)+'°E',x+2*dpr,H-4*dpr);
+  }
+  for(let lat=30;lat<=38;lat+=1){
+    const[,y]=toXY(lat,LOMIN);
+    cx.fillText(lat.toFixed(1)+'°N',2*dpr,y-2*dpr);
+  }
+
+  // DTTA airport
+  const[ax,ay]=toXY(36.8510,10.2272);
+  cx.strokeStyle='rgba(255,107,53,0.6)';cx.lineWidth=1.5;
+  cx.beginPath();cx.arc(ax,ay,6*dpr,0,Math.PI*2);cx.stroke();
+  cx.fillStyle='rgba(255,107,53,0.7)';cx.font=`${8*dpr}px 'Share Tech Mono'`;
+  cx.fillText('DTTA',ax+8*dpr,ay+3*dpr);
+
+  // Tunis city dot
+  const[tx,ty]=toXY(36.8065,10.1815);
+  cx.fillStyle='rgba(0,212,255,0.2)';cx.beginPath();cx.arc(tx,ty,3*dpr,0,Math.PI*2);cx.fill();
+  cx.strokeStyle='rgba(0,212,255,0.4)';cx.lineWidth=1;cx.beginPath();cx.arc(tx,ty,3*dpr,0,Math.PI*2);cx.stroke();
+  cx.fillStyle='rgba(0,212,255,0.45)';cx.font=`${7.5*dpr}px 'Share Tech Mono'`;
+  cx.fillText('TUNIS',tx+5*dpr,ty+3*dpr);
+
+  // planes
+  planes.forEach(p=>{
+    if(p.lat==null||p.lon==null)return;
+    const[x,y]=toXY(p.lat,p.lon);
+    const sel=p.icao===selIcao;
+
+    if(sel){
+      cx.beginPath();cx.arc(x,y,18*dpr,0,Math.PI*2);
+      cx.strokeStyle='rgba(0,255,157,0.25)';cx.lineWidth=1;cx.stroke();
+    }
+
+    cx.save();cx.translate(x,y);
+    cx.rotate(((p.heading||0)*Math.PI)/180);
+    const s=dpr*(sel?6:4.5);
+    cx.fillStyle=p.on_ground?'#ffcc00':(sel?'#00ff9d':'#00d4ff');
+    cx.shadowColor=cx.fillStyle;cx.shadowBlur=(sel?10:5)*dpr;
+    cx.beginPath();
+    cx.moveTo(0,-s*1.9);cx.lineTo(s*.8,s);cx.lineTo(0,s*.4);cx.lineTo(-s*.8,s);
+    cx.closePath();cx.fill();cx.shadowBlur=0;
+    cx.restore();
+
+    // callsign label
+    const label=p.callsign||p.icao;
+    cx.fillStyle=sel?'#00ff9d':'rgba(200,216,232,0.85)';
+    cx.font=`${8.5*dpr}px 'Share Tech Mono'`;
+    cx.fillText(label,x+9*dpr,y-7*dpr);
+    // altitude below label
+    if(p.alt!=null){
+      cx.fillStyle='rgba(74,96,112,0.85)';
+      cx.font=`${7*dpr}px 'Share Tech Mono'`;
+      cx.fillText(Math.round(p.alt)+'m',x+9*dpr,y+4*dpr);
+    }
+  });
+}
+
+// ── Fetch ─────────────────────────────────────────────────
+async function fetchFlights(){
+  setBanner('info','Fetching from local proxy…');
+  try{
+    const res=await fetch(LOCAL,{signal:AbortSignal.timeout(10000)});
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data=await res.json();
+    if(!data.ok) throw new Error(data.error||'proxy error');
+
+    planes=data.planes;
+    setTag('LIVE','tag-live');
+    setBanner(null);
+  }catch(e){
+    setTag('OFFLINE','tag-demo');
+    setBanner('err',`Cannot reach proxy (${e.message}). Run: pip install flask flask-cors requests  →  python proxy.py`);
+    planes=[];
+  }
+  document.getElementById('ts').textContent=new Date().toLocaleTimeString();
+  updateStats();updateTable();updateDetail();draw();
+}
+
+// ── UI helpers ────────────────────────────────────────────
+function setTag(text,cls){
+  const el=document.getElementById('liveTag');
+  el.textContent=text;el.className=cls;
+}
+function setBanner(type,msg){
+  const el=document.getElementById('banner');
+  if(!type){el.style.display='none';return;}
+  el.className=type==='err'?'banner-err':'banner-info';
+  el.textContent=msg;el.style.display='block';
+}
+
+function updateStats(){
+  document.getElementById('sTotal').textContent=planes.length||'0';
+  const alts=planes.filter(p=>p.alt!=null).map(p=>p.alt);
+  const spds=planes.filter(p=>p.velocity!=null).map(p=>p.velocity);
+  const gnd=planes.filter(p=>p.on_ground).length;
+  const ctrs=new Set(planes.map(p=>p.country)).size;
+  document.getElementById('sAlt').textContent=alts.length?Math.round(alts.reduce((a,b)=>a+b)/alts.length):'—';
+  document.getElementById('sSpd').textContent=spds.length?Math.round(spds.reduce((a,b)=>a+b)/spds.length):'—';
+  document.getElementById('sCtr').textContent=ctrs||'—';
+  document.getElementById('sGnd').textContent=planes.length?gnd:'—';
+}
+
+function updateTable(){
+  const tb=document.getElementById('tbody');
+  document.getElementById('planeCount').textContent=planes.length+' aircraft';
+  if(!planes.length){tb.innerHTML=`<tr><td colspan="8" style="padding:30px;text-align:center;color:var(--muted)">No aircraft in range</td></tr>`;return;}
+  tb.innerHTML=planes.map(p=>`
+    <tr data-icao="${p.icao}" class="${p.icao===selIcao?'sel':''}">
+      <td class="tc">${p.callsign||'—'}</td>
+      <td>${p.icao}</td>
+      <td>${p.country}</td>
+      <td class="ta">${p.alt!=null?Math.round(p.alt):'—'}</td>
+      <td class="ts">${p.velocity!=null?Math.round(p.velocity):'—'}</td>
+      <td>${p.heading!=null?Math.round(p.heading)+'°':'—'}</td>
+      <td>${p.vert_rate!=null?(p.vert_rate>0?'↑':'↓')+Math.abs(p.vert_rate).toFixed(1):'—'}</td>
+      <td>${p.on_ground?'✓':'·'}</td>
+    </tr>`).join('');
+  tb.querySelectorAll('tr').forEach(tr=>tr.addEventListener('click',()=>{
+    selIcao=tr.dataset.icao===selIcao?null:tr.dataset.icao;
+    updateTable();updateDetail();draw();
+  }));
+}
+
+function updateDetail(){
+  const el=document.getElementById('detail');
+  if(!selIcao){el.style.display='none';return;}
+  const p=planes.find(x=>x.icao===selIcao);
+  if(!p){el.style.display='none';return;}
+  el.style.display='block';
+  document.getElementById('d-cs').textContent=p.callsign||p.icao;
+  document.getElementById('d-icao').textContent=p.icao;
+  document.getElementById('d-country').textContent=p.country;
+  document.getElementById('d-pos').textContent=p.lat!=null?`${p.lat.toFixed(4)}°N  ${p.lon.toFixed(4)}°E`:'—';
+  document.getElementById('d-alt').textContent=p.alt!=null?`${Math.round(p.alt)} m  (${Math.round(p.alt*3.28084)} ft)`:'—';
+  document.getElementById('d-spd').textContent=p.velocity!=null?`${Math.round(p.velocity)} m/s  (${Math.round(p.velocity*3.6)} km/h)`:'—';
+  document.getElementById('d-hdg').textContent=p.heading!=null?Math.round(p.heading)+'°':'—';
+  document.getElementById('d-vr').textContent=p.vert_rate!=null?p.vert_rate.toFixed(2)+' m/s':'—';
+  document.getElementById('d-sq').textContent=p.squawk||'—';
+  document.getElementById('d-gnd').textContent=p.on_ground!=null?(p.on_ground?'YES':'NO'):'—';
+}
+
+// ── Tooltip on canvas ─────────────────────────────────────
+cv.addEventListener('mousemove',e=>{
+  const r=cv.getBoundingClientRect();
+  const mx=(e.clientX-r.left)*devicePixelRatio;
+  const my=(e.clientY-r.top)*devicePixelRatio;
+  const tip=document.getElementById('tip');
+  const hit=planes.find(p=>{
+    if(p.lat==null)return false;
+    const[x,y]=toXY(p.lat,p.lon);
+    return Math.hypot(x-mx,y-my)<14*devicePixelRatio;
+  });
+  if(hit){
+    const vr=hit.vert_rate!=null?(hit.vert_rate>0?' ↑':' ↓')+Math.abs(hit.vert_rate).toFixed(1)+' m/s':'—';
+    tip.innerHTML=`<b style="color:var(--accent)">${hit.callsign||hit.icao}</b>  ${hit.country}<br>`+
+      `Alt: ${hit.alt!=null?Math.round(hit.alt)+' m':'—'}<br>`+
+      `Spd: ${hit.velocity!=null?Math.round(hit.velocity)+' m/s':'—'}<br>`+
+      `Hdg: ${hit.heading!=null?Math.round(hit.heading)+'°':'—'}  Vrate: ${vr}<br>`+
+      `Squawk: ${hit.squawk||'—'}  Gnd: ${hit.on_ground?'YES':'NO'}`;
+    tip.style.display='block';
+    tip.style.left=(e.clientX+14)+'px';
+    tip.style.top=(e.clientY-8)+'px';
+    cv.style.cursor='crosshair';
+  }else{tip.style.display='none';cv.style.cursor='default';}
+});
+cv.addEventListener('mouseleave',()=>{document.getElementById('tip').style.display='none';});
+cv.addEventListener('click',e=>{
+  const r=cv.getBoundingClientRect();
+  const mx=(e.clientX-r.left)*devicePixelRatio;
+  const my=(e.clientY-r.top)*devicePixelRatio;
+  const hit=planes.find(p=>{
+    if(p.lat==null)return false;
+    const[x,y]=toXY(p.lat,p.lon);
+    return Math.hypot(x-mx,y-my)<14*devicePixelRatio;
+  });
+  selIcao=hit?(hit.icao===selIcao?null:hit.icao):null;
+  updateTable();updateDetail();draw();
+});
+
+// ── Countdown ─────────────────────────────────────────────
+function startCountdown(){
+  clearInterval(cdTimer);cdVal=5;
+  const el=document.getElementById('cdText');
+  el.textContent=`refresh in ${cdVal}s`;
+  cdTimer=setInterval(()=>{
+    cdVal--;
+    if(cdVal<=0){clearInterval(cdTimer);el.textContent='refreshing…';fetchFlights().then(startCountdown);}
+    else el.textContent=`refresh in ${cdVal}s`;
+  },1000);
+}
+document.getElementById('refreshBtn').addEventListener('click',()=>{
+  clearInterval(cdTimer);
+  document.getElementById('cdText').textContent='refreshing…';
+  fetchFlights().then(startCountdown);
+});
+
+// ── Boot ──────────────────────────────────────────────────
+draw();
+fetchFlights().then(startCountdown);
+</script>
+</body>
+</html>
